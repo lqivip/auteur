@@ -8,3 +8,7 @@ data/
 .auteur-data/
 media/
 takes/
+# Tauri build outputs and the locally built server sidecar (CI rebuilds both)
+src-tauri/target/
+src-tauri/gen/
+src-tauri/binaries/auteur-server-*

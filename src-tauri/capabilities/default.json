@@ -1,0 +1,1 @@
+{"$schema":"../gen/schemas/desktop-schema.json","description":"Default capability: core window APIs plus spawning the bundled auteur-server sidecar.","identifier":"default","permissions":["core:default",{"allow":[{"args":true,"name":"binaries/auteur-server","sidecar":true}],"identifier":"shell:allow-spawn"}],"windows":["main"]}

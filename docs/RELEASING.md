@@ -3,13 +3,14 @@
 Releases are built by GitHub Actions (`.github/workflows/release.yml`) —
 nobody builds release binaries on a local machine.
 
-## Current state (phase 1 → 2 transition)
+## Current state (phase 2)
 
-AUTEUR still ships as a local web app: a Node.js service (`server/`) plus a
-statically built React front end (`web/`). The Tauri desktop shell is
-**not generated yet** — `src-tauri/` holds only a layout placeholder (see
-`src-tauri/README.md`). Until the shell lands, a "release" means CI-verified
-build output for all three platforms, not installers.
+The Tauri 2 desktop shell has landed (`src-tauri/`, see
+`src-tauri/README.md`): the Node server ships as a single-executable
+sidecar (Node SEA, built by `scripts/build-sidecar.mjs`), and the
+release workflow packages real installers — `.dmg` (macOS),
+`.msi`/`.exe` (Windows), `.AppImage`/`.deb` (Linux) — attached to a
+**draft** GitHub Release for manual review before publishing.
 
 ## How to cut a release
 
@@ -24,24 +25,22 @@ build output for all three platforms, not installers.
    ```
 
 3. **CI builds all three platforms.** The tag push triggers the Release
-   workflow, which runs `npm ci` + `npm run build` on `macos-latest`,
-   `windows-latest` and `ubuntu-latest` and uploads each platform's
-   `server/dist` + `web/dist` as a workflow artifact
-   (`auteur-build-<os>`). A red job means that platform does not build —
-   fix before announcing the release.
-4. **Publish the GitHub Release.** Create the Release from the tag on
-   GitHub, write the notes (what changed, known issues), and attach any
-   artifacts users should download.
+   workflow on `macos-latest`, `windows-latest` and `ubuntu-latest`.
+   Each runner installs dependencies, builds the web UI and the server,
+   builds the platform's SEA sidecar, expands the app icon, and runs
+   `tauri-action`, which packages the installers and attaches them to
+   a draft Release named after the tag. A red job means that platform
+   does not build — fix before announcing the release.
+4. **Review and publish the GitHub Release.** Open the draft Release
+   CI created from the tag, write the notes (what changed, known
+   issues), check the installer assets are all attached, then publish
+   manually. Nothing goes public before this human review.
 
-## Once the Tauri shell lands (TODO)
+## Still TODO
 
-- Generate the Tauri project in `src-tauri/` and bundle the Node server as
-  a sidecar binary, per the plan in `src-tauri/README.md`.
-- Enable the commented-out `tauri-action` steps at the bottom of
-  `.github/workflows/release.yml` (including the Linux system libraries).
-- From then on, step 3 above produces real installers — `.dmg` (macOS),
-  `.msi`/`.exe` (Windows), `.AppImage`/`.deb` (Linux) — attached to a
-  **draft** Release. Review the draft, then publish it manually; step 4
-  becomes a review-and-publish check instead of manual artifact wrangling.
-- Code signing / notarization (Apple Developer ID, Windows Authenticode)
-  is a separate TODO; unsigned builds will show OS warnings on first run.
+- Code signing / notarization (Apple Developer ID, Windows
+  Authenticode) is a separate TODO; unsigned builds will show OS
+  warnings on first run.
+- The root `package.json` version and `src-tauri/tauri.conf.json`
+  version should move together with `server/`/`web/` at bump time;
+  only the tag is load-bearing for CI.

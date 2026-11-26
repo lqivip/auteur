@@ -18,9 +18,13 @@ app.use('/api', api);
 // Media files live under the data directory; express.static guards traversal.
 app.use('/media', express.static(MEDIA_DIR));
 
-// Serve the built front end when present (web/dist).
-const here = path.dirname(fileURLToPath(import.meta.url));
-const webDist = path.resolve(here, '../../web/dist');
+// Serve the built front end when present (web/dist). The desktop shell
+// points AUTEUR_WEB_DIST at the bundled copy; a plain checkout resolves
+// ../../web/dist relative to this file. The env branch must stay lazy:
+// inside the SEA sidecar import.meta.url is not a real file URL.
+const webDist = process.env.AUTEUR_WEB_DIST
+  ? path.resolve(process.env.AUTEUR_WEB_DIST)
+  : path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../web/dist');
 if (fs.existsSync(webDist)) {
   app.use(express.static(webDist));
   app.get(/^(?!\/api|\/media).*/, (_req, res) => {

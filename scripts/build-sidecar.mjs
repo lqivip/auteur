@@ -41,7 +41,11 @@ function arg(name) {
 
 function run(cmd, args, opts = {}) {
   console.log(`+ ${cmd} ${args.join(' ')}`);
-  execFileSync(cmd, args, { stdio: 'inherit', ...opts });
+  // Windows cannot spawn .cmd/.bat shims (npm.cmd, node_modules/.bin/*.cmd)
+  // directly since the CVE-2024-27980 hardening — it throws spawnSync EINVAL.
+  // Route those through the shell instead.
+  const needsShell = process.platform === 'win32' && /\.(cmd|bat)$/i.test(cmd);
+  execFileSync(cmd, args, { stdio: 'inherit', shell: needsShell, ...opts });
 }
 
 function bin(name) {

@@ -1,0 +1,81 @@
+# AUTEUR release pipeline.
+#
+# Trigger: pushing a version tag (v*) builds the app on all three desktop
+# platforms and uploads the build output as workflow artifacts. Once the
+# Tauri shell lands (see the TODO at the bottom), the same artifacts feed
+# the installer packaging step and get attached to the GitHub Release.
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+
+    steps:
+      - name: Check out the tagged commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The repo has no root lockfile; server/ and web/ are locked
+      # independently, so install each package with npm ci.
+      - name: Install dependencies
+        run: |
+          npm --prefix server ci
+          npm --prefix web ci
+
+      - name: Build server and web
+        run: npm run build
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: auteur-build-${{ matrix.os }}
+          path: |
+            server/dist
+            web/dist
+          if-no-files-found: error
+
+      # ------------------------------------------------------------------
+      # TODO (phase 2): Tauri installer packaging.
+      #
+      # The Tauri shell is not generated yet — src-tauri/ currently holds
+      # only a layout placeholder (see src-tauri/README.md). Once
+      # `npm run tauri init` has been run and the Node server is bundled
+      # as a sidecar binary, replace the plain build/upload steps above
+      # with tauri-apps/tauri-action, e.g.:
+      #
+      #   - name: Install Rust toolchain
+      #     uses: dtolnay/rust-toolchain@stable
+      #
+      #   - name: Build Tauri installers and publish the Release
+      #     uses: tauri-apps/tauri-action@v0
+      #     env:
+      #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      #     with:
+      #       tagName: ${{ github.ref_name }}
+      #       releaseName: "AUTEUR ${{ github.ref_name }}"
+      #       releaseDraft: true
+      #
+      # That produces .dmg (macOS), .msi/.exe (Windows) and
+      # .AppImage/.deb (Linux) and attaches them to a draft Release for
+      # manual review before publishing. Linux runners additionally need
+      # the Tauri system libraries (libwebkit2gtk-4.1-dev,
+      # libappindicator3-dev, librsvg2-dev, patchelf) installed before
+      # the Rust build.
+      # ------------------------------------------------------------------

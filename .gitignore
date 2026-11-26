@@ -1,0 +1,10 @@
+node_modules/
+dist/
+*.log
+*.tar.gz
+.DS_Store
+data/
+.auteur/
+.auteur-data/
+media/
+takes/

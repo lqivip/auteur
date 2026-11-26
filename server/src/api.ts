@@ -622,6 +622,20 @@ api.post('/segments/:id/jobs', async (req, res) => {
     jobId, seg.id, label, channel.id, model.id, snapshot.expected_model, JSON.stringify(snapshot), now(),
   );
 
+  // Material overrides stick to the segment: reference images / audio passed
+  // per-job are the segment's materials, not trial parameters, so persist
+  // them back — otherwise the detail view shows nothing and the next job
+  // silently loses the reference audio. Numeric trial settings (steps,
+  // seed, frames, ...) deliberately do NOT write back.
+  if (isRef2va) {
+    if (overrides.ref_images !== undefined) {
+      run('UPDATE segments SET ref_images = ? WHERE id = ?', JSON.stringify(refImagesRel), seg.id);
+    }
+    if (overrides.ref_audio !== undefined) {
+      run('UPDATE segments SET ref_audio = ? WHERE id = ?', refAudioRel, seg.id);
+    }
+  }
+
   try {
     if (channel.type === 'comfyui') {
       if (isFl2va) {

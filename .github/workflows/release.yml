@@ -1,9 +1,14 @@
 # AUTEUR release pipeline.
 #
-# Trigger: pushing a version tag (v*) builds the app on all three desktop
-# platforms and uploads the build output as workflow artifacts. Once the
-# Tauri shell lands (see the TODO at the bottom), the same artifacts feed
-# the installer packaging step and get attached to the GitHub Release.
+# Trigger: pushing a version tag (v*) packages real desktop installers
+# on all three platforms and attaches them to a DRAFT GitHub Release
+# (tauri-action with releaseDraft) for manual review before publishing.
+#
+# Each runner: installs the Node dependencies, builds web + server,
+# builds the platform's Node SEA sidecar into src-tauri/binaries/,
+# expands the app icon from src-tauri/icons/icon.png, then lets
+# tauri-action bundle the Tauri shell (src-tauri/) into installers:
+# .dmg (macOS), .msi/.exe (Windows), .AppImage/.deb (Linux).
 name: Release
 
 on:
@@ -15,13 +20,22 @@ permissions:
   contents: write
 
 jobs:
-  build:
-    name: Build (${{ matrix.os }})
+  release:
+    name: Release (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
+        include:
+          # macos-latest runners are Apple Silicon; build the arm64
+          # installer there. (An Intel/universal matrix entry can be
+          # added later; the sidecar script takes --triple already.)
+          - os: macos-latest
+            triple: aarch64-apple-darwin
+          - os: windows-latest
+            triple: x86_64-pc-windows-msvc
+          - os: ubuntu-latest
+            triple: x86_64-unknown-linux-gnu
 
     steps:
       - name: Check out the tagged commit
@@ -31,6 +45,17 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.triple }}
+
+      - name: Install Tauri system libraries (Linux)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libssl-dev
 
       # The repo has no root lockfile; server/ and web/ are locked
       # independently, so install each package with npm ci.
@@ -42,40 +67,22 @@ jobs:
       - name: Build server and web
         run: npm run build
 
-      - name: Upload build output
-        uses: actions/upload-artifact@v4
-        with:
-          name: auteur-build-${{ matrix.os }}
-          path: |
-            server/dist
-            web/dist
-          if-no-files-found: error
+      # The Tauri bundle declares the server as an externalBin sidecar;
+      # it must exist before tauri-action runs.
+      - name: Build the server sidecar (Node SEA)
+        run: node scripts/build-sidecar.mjs --triple ${{ matrix.triple }}
 
-      # ------------------------------------------------------------------
-      # TODO (phase 2): Tauri installer packaging.
-      #
-      # The Tauri shell is not generated yet — src-tauri/ currently holds
-      # only a layout placeholder (see src-tauri/README.md). Once
-      # `npm run tauri init` has been run and the Node server is bundled
-      # as a sidecar binary, replace the plain build/upload steps above
-      # with tauri-apps/tauri-action, e.g.:
-      #
-      #   - name: Install Rust toolchain
-      #     uses: dtolnay/rust-toolchain@stable
-      #
-      #   - name: Build Tauri installers and publish the Release
-      #     uses: tauri-apps/tauri-action@v0
-      #     env:
-      #       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      #     with:
-      #       tagName: ${{ github.ref_name }}
-      #       releaseName: "AUTEUR ${{ github.ref_name }}"
-      #       releaseDraft: true
-      #
-      # That produces .dmg (macOS), .msi/.exe (Windows) and
-      # .AppImage/.deb (Linux) and attaches them to a draft Release for
-      # manual review before publishing. Linux runners additionally need
-      # the Tauri system libraries (libwebkit2gtk-4.1-dev,
-      # libappindicator3-dev, librsvg2-dev, patchelf) installed before
-      # the Rust build.
-      # ------------------------------------------------------------------
+      # Expand the 512x512 source icon into the full platform icon set
+      # that tauri.conf.json references.
+      - name: Generate icon set
+        run: npx @tauri-apps/cli@^2 icon src-tauri/icons/icon.png
+
+      - name: Package installers and draft the Release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "AUTEUR ${{ github.ref_name }}"
+          releaseDraft: true
+          args: --target ${{ matrix.triple }}
